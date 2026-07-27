@@ -56,8 +56,8 @@
       <div class="kpi"><div class="label">Total</div><div class="value" id="kpiTotal">0</div><div class="sub-val" id="kpiTotalH">0 h</div></div>
     </div>
     <div class="tabs" id="tabs">
-      <button class="tab active" data-tab="tarefas" onclick="switchTab('tarefas')">📋 Tarefas</button>
-      <button class="tab mgr-only" data-tab="gantt" onclick="switchTab('gantt')">📊 Gantt</button>
+      <button class="tab active op-tab" data-tab="tarefas" onclick="switchTab('tarefas')">📋 Tarefas</button>
+      <button class="tab mgr-only" data-tab="gantt" onclick="switchTab('gantt')">📊 Gantt / Andamento</button>
       <button class="tab mgr-only" data-tab="curvas" onclick="switchTab('curvas')">📈 Curva S</button>
       <button class="tab mgr-only" data-tab="equipe" onclick="switchTab('equipe')">👥 Equipe</button>
     </div>
@@ -70,7 +70,8 @@
             <button class="chip" data-status="pending" onclick="setStatus(this)">Pendentes</button>
             <button class="chip" data-status="done" onclick="setStatus(this)">Concluídas</button>
           </div>
-          <div class="filter-row" id="areaChips"><span class="filter-label">Setor</span></div>
+          <div class="filter-row" id="dateChips"><span class="filter-label">Data</span></div>
+          <div class="filter-row mgr-only" id="areaChips"><span class="filter-label">Setor</span></div>
           <div class="filter-row mgr-only" id="respChips"><span class="filter-label">Pessoa</span></div>
           <div class="filter-row"><div class="search-wrap"><input type="text" id="filterTag" placeholder="Buscar tag ou descrição..." oninput="renderTasks()"></div></div>
         </div>
@@ -85,6 +86,11 @@
       </div>
     </div>
     <div class="tab-panel" id="tab-gantt">
+      <div class="card">
+        <h2>Andamento por operador</h2>
+        <div class="filter-row" id="ganttOpChips" style="margin-bottom:.75rem"></div>
+        <div id="opProgressCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.5rem;margin-bottom:.85rem"></div>
+      </div>
       <div class="card">
         <h2>Gantt por Setor
           <button class="tl-toggle" id="btnPdfGantt" onclick="exportGanttPDF()" style="margin-left:auto">📄 PDF</button>

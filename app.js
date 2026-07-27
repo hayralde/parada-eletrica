@@ -5,7 +5,7 @@ const AREA_SPAN = window.AREA_SPAN || {};
 let token = localStorage.getItem("parada_token") || "";
 let currentUser = null, ACTIVITIES = [], ALL_ACTIVITIES = [], doneSet = new Set();
 let TOTAL_H = 0, TOTAL_N = 0, chartS, chartResp, ws, tlCollapsed = false;
-let filterStatus = "", filterAreas = new Set(), filterResps = new Set();
+let filterStatus = "", filterAreas = new Set(), filterResps = new Set(), filterDate = "", filterGanttOp = "";
 
 function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800)}
 function switchTab(id){
@@ -45,9 +45,16 @@ async function bootApp(){
   document.getElementById("userRole").textContent=currentUser.role;
   const isOp=currentUser.role==="operador";
   if(currentUser.role==="admin"||currentUser.role==="supervisor") document.getElementById("btnReset").style.display="";
+  const isSup = currentUser.role === "supervisor";
   document.querySelectorAll(".mgr-only").forEach(el=>{el.style.display=isOp?"none":""});
   document.querySelectorAll(".tab.mgr-only").forEach(t=>{t.style.display=isOp?"none":""});
-  document.getElementById("headerSub").textContent=isOp?"Minhas atividades":"Online · Compartilhado";
+  // Supervisor: hide Tarefas tab; Admin sees everything
+  document.querySelectorAll(".op-tab").forEach(t=>{
+    if (isSup) t.style.display = "none";
+    else if (isOp) t.style.display = "";
+    else t.style.display = ""; // admin
+  });
+  document.getElementById("headerSub").textContent=isOp?"Minhas atividades":(isSup?"Visão supervisor":"Online · Compartilhado");
   document.getElementById("progScope").textContent=isOp?"Pessoal ("+currentUser.full_name+")":"Geral";
   ALL_ACTIVITIES=await api("/api/activities");
   if(isOp){
@@ -61,7 +68,9 @@ async function bootApp(){
   document.getElementById("kpiTotalH").textContent=TOTAL_H.toFixed(0)+" h";
   buildChipFilters();await loadProgress();
   if(isOp){const myIds=new Set(ACTIVITIES.map(a=>a.id));doneSet=new Set([...doneSet].filter(id=>myIds.has(id)))}
-  connectWS();switchTab("tarefas");render();
+  connectWS();
+  if(currentUser.role==="supervisor") switchTab("gantt"); else switchTab("tarefas");
+  render();
 }
 async function loadProgress(){const p=await api("/api/progress");doneSet=new Set(p.done_ids||[])}
 function connectWS(){
@@ -105,12 +114,69 @@ async function confirmReset(){
   catch(e){document.getElementById("resetError").style.display="block"}
 }
 function buildChipFilters(){
+  // Datas da parada presentes nas atividades do usuário
+  const days=[...new Set(ACTIVITIES.map(a=>{
+    try{return parseInt(String(a.data).split("/")[0],10)}catch(e){return null}
+  }).filter(Boolean))].sort((a,b)=>a-b);
+  const wd=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const dateBox=document.getElementById("dateChips");
+  if(dateBox){
+    dateBox.innerHTML='<span class="filter-label">Data</span><button class="chip on" data-date="" onclick="setDate(this)">Todas</button>'+
+      days.map(d=>{
+        const name=wd[new Date(2026,7,d).getDay()];
+        return `<button class="chip" data-date="${d}" onclick="setDate(this)">${name} ${String(d).padStart(2,"0")}/08</button>`;
+      }).join("");
+  }
   const areas=[...new Set(ACTIVITIES.map(a=>a.area))].sort();
   const resps=[...new Set(ACTIVITIES.map(a=>a.resp))].sort();
-  document.getElementById("areaChips").innerHTML='<span class="filter-label">Setor</span><button class="chip on" data-area="" onclick="setArea(this)">Todos</button>'+
+  const areaEl=document.getElementById("areaChips");
+  if(areaEl) areaEl.innerHTML='<span class="filter-label">Setor</span><button class="chip on" data-area="" onclick="setArea(this)">Todos</button>'+
     areas.map(a=>`<button class="chip" data-area="${a}" onclick="setArea(this)">${a.length>16?a.slice(0,14)+'…':a}</button>`).join("");
-  document.getElementById("respChips").innerHTML='<span class="filter-label">Pessoa</span><button class="chip on" data-resp="" onclick="setResp(this)">Todos</button>'+
+  const respEl=document.getElementById("respChips");
+  if(respEl) respEl.innerHTML='<span class="filter-label">Pessoa</span><button class="chip on" data-resp="" onclick="setResp(this)">Todos</button>'+
     resps.map(r=>`<button class="chip" data-resp="${r}" onclick="setResp(this)">${r}</button>`).join("");
+  buildGanttOpChips();
+}
+function setDate(btn){
+  document.querySelectorAll("#dateChips .chip").forEach(b=>b.classList.remove("on"));
+  btn.classList.add("on");
+  filterDate=btn.dataset.date||"";
+  renderTasks();
+}
+function buildGanttOpChips(){
+  const box=document.getElementById("ganttOpChips");
+  if(!box) return;
+  const resps=[...new Set(ALL_ACTIVITIES.map(a=>a.resp).filter(Boolean))].sort();
+  box.innerHTML='<span class="filter-label">Operador</span><button class="chip on" data-gop="" onclick="setGanttOp(this)">Todos</button>'+
+    resps.map(r=>`<button class="chip" data-gop="${r}" onclick="setGanttOp(this)">${r}</button>`).join("");
+}
+function setGanttOp(btn){
+  document.querySelectorAll("#ganttOpChips .chip").forEach(b=>b.classList.remove("on"));
+  btn.classList.add("on");
+  filterGanttOp=btn.dataset.gop||"";
+  renderOpProgress();
+  renderGantt();
+}
+function renderOpProgress(){
+  const box=document.getElementById("opProgressCards");
+  if(!box) return;
+  const resps=[...new Set(ALL_ACTIVITIES.map(a=>a.resp).filter(Boolean))].sort();
+  const list=filterGanttOp?resps.filter(r=>r===filterGanttOp):resps;
+  box.innerHTML=list.map(r=>{
+    const mine=ALL_ACTIVITIES.filter(a=>a.resp===r);
+    const totalH=mine.reduce((s,a)=>s+a.dur,0);
+    const doneH=mine.filter(a=>doneSet.has(a.id)).reduce((s,a)=>s+a.dur,0);
+    const doneN=mine.filter(a=>doneSet.has(a.id)).length;
+    const pct=totalH?doneH/totalH*100:0;
+    return `<div style="background:#0f172a;border:1px solid var(--border);border-radius:10px;padding:.65rem">
+      <div style="font-weight:700;font-size:.85rem;margin-bottom:.25rem">${r}</div>
+      <div style="font-size:1.25rem;font-weight:800;color:${pct>=100?'var(--green)':pct>0?'var(--accent)':'var(--muted)'}">${pct.toFixed(0)}%</div>
+      <div style="font-size:.68rem;color:var(--muted);margin-top:.2rem">${doneN}/${mine.length} atv · ${doneH.toFixed(1)}/${totalH.toFixed(1)} h</div>
+      <div style="height:6px;background:#1a2332;border-radius:4px;margin-top:.4rem;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#0ea5e9,#22c55e);border-radius:4px"></div>
+      </div>
+    </div>`;
+  }).join("");
 }
 function setStatus(btn){document.querySelectorAll("[data-status]").forEach(b=>b.classList.remove("on"));btn.classList.add("on");filterStatus=btn.dataset.status||"";renderTasks()}
 function setArea(btn){
@@ -135,6 +201,10 @@ function filteredActs(){
     const isDone=doneSet.has(a.id);
     if(filterStatus==="done"&&!isDone)return false;
     if(filterStatus==="pending"&&isDone)return false;
+    if(filterDate){
+      let d=0;try{d=parseInt(String(a.data).split("/")[0],10)}catch(e){}
+      if(String(d)!==String(filterDate))return false;
+    }
     if(filterAreas.size&&!filterAreas.has(a.area))return false;
     if(filterResps.size&&!filterResps.has(a.resp))return false;
     if(q&&!(a.tag||"").toLowerCase().includes(q)&&!(a.desc||"").toLowerCase().includes(q)&&!(a.area||"").toLowerCase().includes(q))return false;
@@ -177,8 +247,22 @@ function renderGantt(){
   let html='<div class="gantt-header"><div></div><div class="gantt-days" style="grid-template-columns:repeat('+totalDays+',1fr)">';
   for(let d=DAY_MIN;d<=DAY_MAX;d++){const wd=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][new Date(2026,7,d).getDay()];html+=`<span>${wd} ${String(d).padStart(2,"0")}</span>`}
   html+='</div></div>';
-  Object.keys(AREA_SPAN).forEach(area=>{
-    const sp=AREA_SPAN[area],leftPct=((sp.min-DAY_MIN)/totalDays)*100,widthPct=((sp.max-sp.min+1)/totalDays)*100;
+  // When filtering by operator, recompute span from their activities only
+  let spans=AREA_SPAN;
+  if(filterGanttOp){
+    const mine=ALL_ACTIVITIES.filter(a=>a.resp===filterGanttOp);
+    spans={};
+    mine.forEach(a=>{
+      let d=3;try{d=parseInt(String(a.data).split("/")[0],10)}catch(e){}
+      if(!spans[a.area]) spans[a.area]={min:d,max:d,hours:0,ids:[]};
+      spans[a.area].min=Math.min(spans[a.area].min,d);
+      spans[a.area].max=Math.max(spans[a.area].max,d);
+      spans[a.area].hours+=a.dur;
+      spans[a.area].ids.push(a.id);
+    });
+  }
+  Object.keys(spans).forEach(area=>{
+    const sp=spans[area],leftPct=((sp.min-DAY_MIN)/totalDays)*100,widthPct=((sp.max-sp.min+1)/totalDays)*100;
     let doneH=0;sp.ids.forEach(id=>{if(doneSet.has(id)){const a=ALL_ACTIVITIES.find(x=>x.id===id);if(a)doneH+=a.dur}});
     const pct=sp.hours>0?(doneH/sp.hours*100):0;
     let cls="gantt-bar";if(pct>=99.9)cls+=" done";else if(pct>0)cls+=" partial";
@@ -233,7 +317,7 @@ async function exportGanttPDF(){
   if(was){tlCollapsed=true;document.getElementById("tlBody").classList.add("collapsed")}
   btn.innerHTML="📄 PDF";btn.disabled=false;
 }
-function render(){updateKPIs();renderGantt();renderTasks();buildCharts()}
+function render(){updateKPIs();renderGantt();renderOpProgress();renderTasks();buildCharts()}
 (async()=>{
   const saved=localStorage.getItem("parada_user");
   if(token&&saved){try{currentUser=JSON.parse(saved);await api("/api/me");await bootApp()}catch(e){doLogout()}}
