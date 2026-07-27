@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Parada Elétrica</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+</head>
+<body>
+<div id="loginScreen">
+  <div class="login-box">
+    <h2>⚡ Parada Elétrica</h2>
+    <p>Acompanhamento · Agosto 2026</p>
+    <div class="err" id="loginErr">Usuário ou senha inválidos</div>
+    <input type="text" id="loginUser" placeholder="Usuário" autocomplete="username">
+    <input type="password" id="loginPass" placeholder="Senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">Entrar</button>
+  </div>
+</div>
+<div id="app">
+  <div class="header">
+    <div>
+      <h1>⚡ Parada Elétrica</h1>
+      <div class="sub"><span class="live-dot"></span><span id="headerSub">Online</span></div>
+    </div>
+    <div class="header-right">
+      <span class="user-chip"><strong id="userName">—</strong> · <span id="userRole">—</span></span>
+      <span class="badge badge-blue" id="badgePending">—</span>
+      <span class="badge badge-green" id="badgeDone">—</span>
+      <button class="btn btn-danger" id="btnReset" onclick="openResetModal()" style="display:none">↺</button>
+      <button class="btn" onclick="doLogout()">Sair</button>
+    </div>
+  </div>
+  <div class="container">
+    <div class="progress-main">
+      <div class="top">
+        <div>
+          <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase">Progresso <span id="progScope">Geral</span></div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:.1rem" id="progLabel">—</div>
+        </div>
+        <div style="text-align:right">
+          <div class="pct" id="progPct">0%</div>
+          <div style="font-size:.72rem;color:var(--muted)">03 → 09/08</div>
+        </div>
+      </div>
+      <div class="bar-bg"><div class="bar-fill" id="progBar" style="width:0%"></div></div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="label">Concluídas</div><div class="value green" id="kpiDone">0</div><div class="sub-val" id="kpiDoneH">0 h</div></div>
+      <div class="kpi"><div class="label">Pendentes</div><div class="value orange" id="kpiPending">0</div><div class="sub-val" id="kpiPendingH">0 h</div></div>
+      <div class="kpi"><div class="label">% Horas</div><div class="value accent" id="kpiPctH">0%</div></div>
+      <div class="kpi"><div class="label">% Ativ.</div><div class="value purple" id="kpiPctN">0%</div></div>
+      <div class="kpi"><div class="label">Total</div><div class="value" id="kpiTotal">0</div><div class="sub-val" id="kpiTotalH">0 h</div></div>
+    </div>
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-tab="tarefas" onclick="switchTab('tarefas')">📋 Tarefas</button>
+      <button class="tab mgr-only" data-tab="gantt" onclick="switchTab('gantt')">📊 Gantt</button>
+      <button class="tab mgr-only" data-tab="curvas" onclick="switchTab('curvas')">📈 Curva S</button>
+      <button class="tab mgr-only" data-tab="equipe" onclick="switchTab('equipe')">👥 Equipe</button>
+    </div>
+    <div class="tab-panel active" id="tab-tarefas">
+      <div class="card">
+        <div class="filters">
+          <div class="filter-row">
+            <span class="filter-label">Status</span>
+            <button class="chip on" data-status="" onclick="setStatus(this)">Todos</button>
+            <button class="chip" data-status="pending" onclick="setStatus(this)">Pendentes</button>
+            <button class="chip" data-status="done" onclick="setStatus(this)">Concluídas</button>
+          </div>
+          <div class="filter-row" id="areaChips"><span class="filter-label">Setor</span></div>
+          <div class="filter-row mgr-only" id="respChips"><span class="filter-label">Pessoa</span></div>
+          <div class="filter-row"><div class="search-wrap"><input type="text" id="filterTag" placeholder="Buscar tag ou descrição..." oninput="renderTasks()"></div></div>
+        </div>
+        <div class="task-list" id="taskList"></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:40px">✓</th><th>Nº</th><th>Setor</th><th>Tag</th><th>Descrição</th><th>Dur.</th><th>Data</th><th>Horário</th><th>Resp.</th><th>Turno</th></tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="emptyMsg" style="display:none">Nenhuma tarefa encontrada</div>
+      </div>
+    </div>
+    <div class="tab-panel" id="tab-gantt">
+      <div class="card">
+        <h2>Gantt por Setor
+          <button class="tl-toggle" id="btnPdfGantt" onclick="exportGanttPDF()" style="margin-left:auto">📄 PDF</button>
+          <button class="tl-toggle" onclick="toggleTimeline()" id="tlToggleText">Recolher</button>
+        </h2>
+        <div class="tl-body-wrap" id="tlBody"><div class="gantt-wrap" id="gantt"></div></div>
+      </div>
+    </div>
+    <div class="tab-panel" id="tab-curvas">
+      <div class="card"><h2>Curva S – Hora a Hora (%)</h2><div class="chart-wrap"><canvas id="chartS"></canvas></div></div>
+    </div>
+    <div class="tab-panel" id="tab-equipe">
+      <div class="card"><h2>Horas por Responsável</h2><div class="chart-wrap"><canvas id="chartResp"></canvas></div></div>
+    </div>
+  </div>
+  <footer>Grok · Parada Elétrica</footer>
+</div>
+<div class="modal-overlay" id="resetModal">
+  <div class="modal">
+    <h3>⚠ Resetar progresso</h3>
+    <p>Digite a senha:</p>
+    <input type="password" id="resetPassword" placeholder="Senha" onkeydown="if(event.key==='Enter')confirmReset()">
+    <div class="modal-error" id="resetError">Senha incorreta</div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeResetModal()">Cancelar</button>
+      <button class="modal-confirm" onclick="confirmReset()">Confirmar</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="/static/meta.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
